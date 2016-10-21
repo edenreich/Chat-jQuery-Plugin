@@ -34,7 +34,7 @@ if(typeof Object.create !== 'function') {
 | these all at once.
 |
 | This plugin is build for personal use and is absolutly restricted for a commerical use.
-| Copy Rights Eden Reich, all rights reserved.
+| Copyright Eden Reich, all rights reserved.
 |
 */
 ;(function($, window, document, undefined) {
