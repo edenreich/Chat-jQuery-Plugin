@@ -1,4 +1,4 @@
-# chat_plugin.js
+#Chat jQuery Plugin
 A nice plugin to use a chat application on your website
 
 ##How To Use
