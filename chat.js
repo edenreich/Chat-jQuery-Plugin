@@ -56,7 +56,12 @@ if(typeof Object.create !== 'function') {
     /**
      * Just a placeholder to see if the scroll is down
      */
-    var isDown = true;    
+    var isDown = true;
+
+    /**
+     * Just a placeholder to save the date the text was last loaded
+     */
+    var lastLoad = 0;    
 
 	/**
 	 *	This is the Chat object which stores all the functions we need for the chat 
@@ -228,21 +233,26 @@ if(typeof Object.create !== 'function') {
 			$.ajax({
 				type: 'get',
 				url: settings.getURL,
-				data: { '_token': settings.token },
+				data: { '_token': settings.token, 'lastLoad': lastLoad },
 				success: function(response) {
 					
 					if(response.wait) {
 						return;
 					}
 					var messages = '';
-					$('#messageContainer').empty();
+                    if (lastLoad == 0) {
+                        $('#messageContainer').empty();
+                    }
 					
 					$.each(response.messages, function(index, value) {
 
 						messages += value['name'] + ': ' + value['message'] + '<br>';
 					});
 				
-                    $('#messageContainer').html(messages);
+                    if (messages) {
+                        $('#messageContainer').append(messages);
+                        lastLoad = Date.now();
+                    }
                     
                     if (isDown == true) {
                         $("#messageContainer").animate({ scrollTop: $("#messageContainer").get(0).scrollHeight }, 'fast');
