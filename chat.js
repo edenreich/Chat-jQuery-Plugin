@@ -51,7 +51,12 @@ if(typeof Object.create !== 'function') {
 	/**
 	 * Just a placeholder for our Timer, so we can refernce to it later on the code.
 	 */
-	var timer;
+    var timer;
+    
+    /**
+     * Just a placeholder to see if the scroll is down
+     */
+    var isDown = true;    
 
 	/**
 	 *	This is the Chat object which stores all the functions we need for the chat 
@@ -103,7 +108,8 @@ if(typeof Object.create !== 'function') {
 
 				Chat.createNewChatRoom(username).done(function() {
 
-					$('#sendMessage').on('click', {name: username},chatObj.store);
+                    $('#sendMessage').on('click', {name: username},chatObj.store);
+                    $('#messageContainer').on('scroll', Chat.setIsDown);
 				});
 			} else {
 
@@ -236,7 +242,11 @@ if(typeof Object.create !== 'function') {
 						messages += value['name'] + ': ' + value['message'] + '<br>';
 					});
 				
-					$('#messageContainer').html(messages);
+                    $('#messageContainer').html(messages);
+                    
+                    if (isDown == true) {
+                        $("#messageContainer").animate({ scrollTop: $("#messageContainer").get(0).scrollHeight }, 'fast');
+                    }                    
 				}
 			});
 			
@@ -472,7 +482,18 @@ if(typeof Object.create !== 'function') {
 			if(matches)
 				return true;
 			return false;
-		},
+        },
+        
+        /**
+         * Set the isDown when scroll moves
+         */
+        setIsDown: function () {
+            if ($(this).scrollTop() + $(this).innerHeight() >= $(this)[0].scrollHeight) {
+                isDown = true;
+            } else {
+                isDown = false;
+            }
+        },        
 	};
 
 	/**
