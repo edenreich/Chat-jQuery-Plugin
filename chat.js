@@ -42,8 +42,9 @@ if (typeof Object.create !== 'function') {
 
 	var settings = {
 		_token: $('[name="csrf_token"]').attr('content'),
-		getURL: 'messages',
-		postURL: 'messages',
+		getURL: '/messages',
+		postURL: '/messages',
+		createURL: '/create',
 		background: '#47b403',
 		welcome: 'customer team will contact you as soon as possible.',
 	};
@@ -58,10 +59,10 @@ if (typeof Object.create !== 'function') {
      */
 	var isDown = true;
 
-    /**
-     * Just a placeholder to save the date the text was last loaded
-     */
-	var lastLoad = 0;
+	/**
+	 * Store the session id.
+	 */
+	var sessionId = null;
 
 	/**
 	 *	This is the Chat object which stores all the functions we need for the chat 
@@ -77,7 +78,6 @@ if (typeof Object.create !== 'function') {
 		 * - Binding a click event to trigger a method when the user click on start.
 		 */
 		init: function (options) {
-
 			settings = $.extend({}, settings, options);
 			chatObj = this;
 
@@ -93,33 +93,25 @@ if (typeof Object.create !== 'function') {
 		 * This method will be triggered once the user clicks on the start button.	
 		 */
 		startChat: function (event) {
-
 			event.preventDefault();
 			$(this).prop('disabled', true);
 
 			if (Chat.isHTML($('#username').val())) {
-
 				Chat.generateErrorMessage('Are you trying your best?', function () {
-
 					$('#startChatButton').prop('disabled', false);
 				});
-
 				return;
 			}
 
 			var username = $('#username').val();
 
 			if (username) {
-
 				Chat.createNewChatRoom(username).done(function () {
-
 					$('#sendMessage').on('click', { name: username }, chatObj.sendMessage);
 					$('#messageContainer').on('scroll', Chat.setIsDown);
 				});
 			} else {
-
 				Chat.generateErrorMessage('Please enter a name', function () {
-
 					$('#startChatButton').prop('disabled', false);
 				});
 			}
@@ -131,7 +123,6 @@ if (typeof Object.create !== 'function') {
 		 * to the body tags.
 		 */
 		createChatBox: function () {
-
 			$chatBox = this.draw('chatBox');
 			$firstPage = this.draw('firstPage');
 
@@ -143,21 +134,13 @@ if (typeof Object.create !== 'function') {
 		 * This method taking care for opening the chat element. 
 		 */
 		open: function () {
-
 			$('.chat-content').slideToggle(function () {
-
 				if ($(this).is(":visible")) {
-
-					if (Chat.isSecondPage())
+					if (Chat.isSecondPage()) {
 						Chat.startConnectionStream();
+					}
 
 					$('.chat-title').html('Minimize Chat ' + '<span class="glyphicon glyphicon-minus"/>');
-				} else {
-
-					if (Chat.isSecondPage())
-						Chat.closeConnectionStream();
-
-					$('.chat-title').html('Chat with us now!');
 				}
 			});
 		},
@@ -169,15 +152,34 @@ if (typeof Object.create !== 'function') {
 		createNewChatRoom: function (username) {
 			var dfd = $.Deferred();
 			chatObj = this;
-			$('.chat-content-page-one').fadeOut(function () {
 
-				$(this).remove();
+			$.ajax({
+				type: 'post',
+				url: settings.createURL,
+				contentType: 'application/json; charset=utf-8',
+				data: JSON.stringify({ '_token': settings._token, 'username': username }),
+				beforeSend: function () {
+					$('#sendMessage').prop('disabled', true);
+				},
+				success: function (response) {
+					if (!response.success) {
+						return Chat.generateErrorMessage('Error has occured');
+					}
 
-				$newPage = chatObj.draw('secondPage');
-				$chatBox.find('.chat-content').append($newPage);
-				chatObj.welcomeMessage(username);
-				chatObj.startConnectionStream();
-				dfd.resolve();
+					sessionId = response.session.id;
+				}
+			}).done(function () {
+				$('#message').val("");
+				$('#sendMessage').prop('disabled', false);
+			}).then(function() {
+				$('.chat-content-page-one').fadeOut(function () {
+					$(this).remove();
+					$newPage = chatObj.draw('secondPage');
+					$chatBox.find('.chat-content').append($newPage);
+					chatObj.welcomeMessage(username);
+					chatObj.startConnectionStream();
+					dfd.resolve();
+				});
 			});
 
 			return dfd.promise();
@@ -199,18 +201,20 @@ if (typeof Object.create !== 'function') {
 				return Chat.generateErrorMessage('Please enter a message');
 			}
 
-			var payload = {
+			var payload = JSON.stringify({
 				'_token': settings._token,
 				'username': username,
-				'message': message
-			};
+				'message': message,
+				'session_id': sessionId
+			});
 
 			$.ajax({
 				type: 'post',
 				url: settings.postURL,
-				dataType: 'json',
+				contentType: 'application/json; charset=utf-8',
 				data: payload,
 				beforeSend: function () {
+					$('#messageContainer').append(username+': '+message);
 					$('#sendMessage').prop('disabled', true);
 				},
 				success: function (response) {
@@ -228,73 +232,61 @@ if (typeof Object.create !== 'function') {
 		 * This method will load the messages from the database via ajax. 
 		 */
 		load: function () {
+			setTimeout(function getMessages(timestamp) {
+				
+				var timestamp = timestamp || Date.now();
 
-			$.ajax({
-				type: 'get',
-				url: settings.getURL,
-				data: { '_token': settings.token, 'lastLoad': lastLoad },
-				success: function (response) {
+				$.ajax({
+					type: 'get',
+					url: settings.getURL,
+					contentType: 'application/json; charset=utf-8',
+					data: { '_token': settings.token, 'session_id': sessionId, 'timestamp': timestamp },
+					timeout: 15000,
+					success: function (response) {
+						if (!response.success) {
+							return;
+						}
 
-					if (response.wait) {
-						return;
-					}
-
-					var messages = '';
-					if (lastLoad == 0) {
 						$('#messageContainer').empty();
+						var messages = '';
+						$.each(response.messages, function (index, message) {
+							messages += message['username'] + ': ' + message['message'] + '<br/>';
+						});
+
+						$('#messageContainer').html(messages);
+						getMessages(Date.now());
+			
+						if (isDown == true) {
+							$("#messageContainer").animate({ scrollTop: $("#messageContainer").get(0).scrollHeight }, 'fast');
+						}
+					},
+					error: function(xhr, status, error) {
+						if (status === 'timeout') {
+							getMessages(timestamp);
+						}
 					}
-
-					$.each(response.messages, function (index, value) {
-
-						messages += value['name'] + ': ' + value['message'] + '<br>';
-					});
-
-					if (messages) {
-						$('#messageContainer').append(messages);
-						lastLoad = Date.now();
-					}
-
-					if (isDown == true) {
-						$("#messageContainer").animate({ scrollTop: $("#messageContainer").get(0).scrollHeight }, 'fast');
-					}
-				}
-			});
-
+				});
+			}, 5000);
 		},
 
 		/**
 		 * This method will close the chat element. 
 		 */
 		close: function () {
-
 			$('.chat-content').hide();
-		},
-
-		/**
-		 * This method will close the connection to the backend, as soon as we close the chat. 
-		 */
-		closeConnectionStream: function () {
-			// 8.close the connection to the database
-			clearInterval(timer);
-			return timer = false;
 		},
 
 		/**
 		 * This method will start the connection to the backend, as soon as we open the chat. 
 		 */
 		startConnectionStream: function () {
-
-			if (!timer) {
-
-				return timer = setInterval(Chat.load, 2000);
-			}
+			Chat.load();
 		},
 
 		/**
 		 * This method will only take care of the styling and the drawing of the chat. 
 		 */
 		draw: function (element) {
-
 			switch (element) {
 				// draw the chatBox
 				case 'chatBox':
@@ -428,8 +420,8 @@ if (typeof Object.create !== 'function') {
 					$form.append(
 						$formGroup.append($formColumn.append($chatMessageInput)), $sendButton
 					);
-					$element = $secondPage.append($messageContainer, $form)
 
+					$element = $secondPage.append($messageContainer, $form)
 			}
 
 			return $element;
@@ -442,7 +434,6 @@ if (typeof Object.create !== 'function') {
 		 * error from the plugin once they occures.
 		 */
 		generateErrorMessage: function (errorMsg, callback) {
-
 			$error = $('<font />', {
 				color: 'red',
 				text: errorMsg,
@@ -464,7 +455,6 @@ if (typeof Object.create !== 'function') {
 		 * This method will just print our a generic welcome message to the client. 
 		 */
 		welcomeMessage: function (username) {
-
 			$('body').find('#messageContainer').html('<h5>Welcome ' + username + ',</h5><p style="position:relative; width: 300px;">' + settings.welcome + '</p>');
 		},
 
@@ -473,11 +463,11 @@ if (typeof Object.create !== 'function') {
 		 * we are inside a chatroom. 
 		 */
 		isSecondPage: function () {
-
 			if ($('.chat-content').children('div').hasClass('chat-content-page-two')) {
 
 				return true;
 			}
+
 			return false;
 		},
 
@@ -489,8 +479,10 @@ if (typeof Object.create !== 'function') {
 
 			var matches = string.match(/<[a-z][\s\S]*>/i);
 
-			if (matches)
+			if (matches) {
 				return true;
+			}
+
 			return false;
 		},
 
@@ -510,7 +502,6 @@ if (typeof Object.create !== 'function') {
 	 * This is how we will call the plugin from the HTML page. 
 	 */
 	$.chat = function (options) {
-
 		var chat = Object.create(Chat);
 		chat.init(options);
 	}
